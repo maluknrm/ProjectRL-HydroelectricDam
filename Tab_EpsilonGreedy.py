@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class EpsilonGreedyPolicy(object):
+class TabEpsilonGreedyPolicy(object):
     """
     A simple epsilon greedy policy.
     """

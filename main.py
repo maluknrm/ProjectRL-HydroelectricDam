@@ -9,7 +9,7 @@ from baselines import *
 from thresholds import *
 from Damn_env import *
 from TabQAgent import *
-from EpsilonGreedy import *
+from Tab_EpsilonGreedy import *
 
 # TODO Make Argparser
 # TODO insert Vincents test env
@@ -74,7 +74,7 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
     env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=train_df, warm_start=False, warm_start_step=2000,
                 shaping=False)
 
-    agent = QAgent(env=env, policy=EpsilonGreedyPolicy(), num_episodes=1200, price_threshold=price_thresholds,
+    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1200, price_threshold=price_thresholds,
                water_threshold=water_thresholds)
 
 
@@ -85,7 +85,7 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
 
     # validate 
     env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=df_val)
-    agent = QAgent(env=env, policy=EpsilonGreedyPolicy(), num_episodes=1000, price_threshold=price_thresholds,
+    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1000, price_threshold=price_thresholds,
                 water_threshold=water_thresholds)
 
 
@@ -96,8 +96,11 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
     plt.show()
 
 
+def run_deep_q(train_df, df_val, price_thresholds, water_thresholds):
+    pass
 
 
 
 
-main()
+if __name__ == "__main__":
+    main()
