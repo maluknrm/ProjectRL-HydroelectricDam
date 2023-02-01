@@ -35,7 +35,7 @@ class DamEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, n_discrete_actions: int, state_space: List[int], price_table: pd.DataFrame,
-                 warm_start: bool = False, warm_start_step: int = 200, shaping=False) -> None:
+                 warm_start: bool = False, warm_start_step: int = 200, shaping=False, shaping_type:int = 1) -> None:
         """
         Params of the Dam environment.
         :param n_discrete_actions: The discrete actions.
@@ -85,6 +85,8 @@ class DamEnv(gym.Env):
         self.warm_start_counter = 0
         # Reward shaping
         self.shaping = shaping
+        # 1 is our shaping, 2 is proposed by vincent
+        self.shaping_type = shaping_type
 
 
 
@@ -194,7 +196,14 @@ class DamEnv(gym.Env):
             sellable_energy = U_potential_energy * 0.9  # Actually sellable energy in Joule
             sellable_energy_mgwh = self.joule_to_megawatt_hours(joule=sellable_energy)  # Sellable energy in mgwh
             reward = obs[1] * sellable_energy_mgwh  # price of sellable energy
+            
             if self.shaping == True:
+                if self.shaping_type == 1:
+                    shaped_reward = 0
+
+                else:
+                    shaped_reward = 0
+
                 #shaped_reward = reward - self.shape_alpha * sellable_energy_mgwh
                 waterlevel_mgwh = self.joule_to_megawatt_hours(joule=U_potential_energy)
                 #shaped_reward = reward - 25.0 * waterlevel_mgwh

@@ -13,6 +13,8 @@ from Tab_EpsilonGreedy import *
 
 # TODO Make Argparser
 # TODO insert Vincents test env
+# TODO make state space multidimensional
+# TODO implement custom/flexible reward shaping
 
 
 
@@ -37,7 +39,7 @@ def main():
     water_thresholds = make_water_threshold()
 
     # Baseline
-    run_baseline(train_df, val_df, price_thresholds, water_thresholds)
+    #run_baseline(train_df, val_df, price_thresholds, water_thresholds)
 
 
     # Tabular Q-Agent
@@ -74,11 +76,11 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
     env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=train_df, warm_start=False, warm_start_step=2000,
                 shaping=False)
 
-    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1200, price_threshold=price_thresholds,
+    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1000, price_threshold=price_thresholds,
                water_threshold=water_thresholds)
 
 
-    Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data = agent.execute_qlearning(epsilon=0.1, epsilon_end=0.05, adaptive_epsilon = True, adapting_learning_rate = True)
+    Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data = agent.execute_qlearning(adaptive_epsilon = True, adapting_learning_rate = True)
 
     plt.plot(episode_returns)
     plt.show()
@@ -94,6 +96,7 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
         
     plt.plot(val_episode_returns)
     plt.show()
+
 
 
 def run_deep_q(train_df, df_val, price_thresholds, water_thresholds):

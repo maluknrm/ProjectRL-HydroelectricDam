@@ -91,7 +91,7 @@ class QAgent():
 
 
 
-    def execute_qlearning(self, epsilon: float = 0.1, epsilon_end: float = 0.05,
+    def execute_qlearning(self, epsilon: float = 0.3, epsilon_end: float = 0.05,
                           adaptive_epsilon: bool = False,
                           adapting_learning_rate: bool = False) -> Tuple[NDArray, List, List, List]:
         """
