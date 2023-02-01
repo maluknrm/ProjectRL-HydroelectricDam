@@ -361,7 +361,6 @@ class QAgent():
 
         # loop until the episode is terminated
         while True:
-
             action = self.get_greedy_action(policy, state)
 
             # next transition
@@ -422,7 +421,7 @@ class QAgent():
         stats = []
 
         # Initialize the state
-        state = TestEnv.observation()
+        state = TestEnv.observation()[:2]
         old_state = (0, 0)
 
         # save information for visulization
@@ -459,10 +458,12 @@ class QAgent():
                 vincent_action = 1
 
             # next transition
-            new_state, reward, shaped_rewards, done, _, taken_action = TestEnv.step(vincent_action)
+            new_state, reward, terminated, truncated, _ = TestEnv.step(vincent_action)
+            new_state = new_state[:2]
+
             waterlevel = new_state[0]
             price = new_state[1]
-            new_state = self.discretize_state(new_state[:2], state)
+            new_state = self.discretize_state(new_state, state)
 
             # update the return
             R += reward
@@ -470,14 +471,13 @@ class QAgent():
 
             # save visualisation data
             viz_prices.append(price)
-            viz_actions.append(taken_action)
             viz_waterlevels.append(waterlevel)
             viz_rewards.append(reward)
             waterlevel = new_state[0]
             price = new_state[1]
 
             # check if the episode is over
-            if done:
+            if terminated or truncated:
                 break
 
             state = new_state

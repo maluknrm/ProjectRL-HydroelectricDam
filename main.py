@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
-
+import argparse
 
 from data_transformation import DataTransformation
 from baselines import *
@@ -10,14 +9,27 @@ from thresholds import *
 from Damn_env import *
 from TabQAgent import *
 from Tab_EpsilonGreedy import *
+from TestEnv import *
 
 # TODO Make Argparser
 # TODO insert Vincents test env
-# TODO do baseline
+
+# TODO make requirements file ?
+
 # TODO implement runs
-# TODO
+# TODO look at evaluate
+# TODO look at threshold
+# TODO write report
 
 
+
+# parser = argparse.ArgumentParser(description='Arguments for the RL Projects')
+#
+# parser.add_argument('path', metavar='P', type=str,
+#                     help='Testing file path.')
+#
+#
+# args = parser.parse_args()
 
 
 def main():
@@ -26,6 +38,7 @@ def main():
     data_transformer = DataTransformation()
 
     train_path = "train.xlsx"
+    #val_path = args.path
     val_path = "validate.xlsx"
 
     data_transformer.transform(dataframe_path=train_path)
@@ -41,70 +54,93 @@ def main():
     water_thresholds = make_water_threshold()
 
     # Baseline
-    #run_baseline(train_df, val_df, price_thresholds, water_thresholds)
+    run_baseline(train_df, val_df, price_thresholds, water_thresholds)
 
 
     # Tabular Q-Agent
-    run_tabQ(train_df, val_df, price_thresholds, water_thresholds)
+    run_tabQ(train_df, val_path, val_df, price_thresholds, water_thresholds)
 
 
 
 
 def run_baseline(train_df, df_val, price_thresholds, water_thresholds):
+    print(40 * "-")
+    print("Run baseline")
+
     n_discrete_actions = 3
     # state space => water level (index 0), price (index 1)
     state_space = [10, 4]
 
-    # train
+    # validate
     env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=df_val, warm_start=False, warm_start_step=2000,
                 shaping=False)
 
     baseline_policy = BaselinePolicy()
-    basline_agent = BaselineAgent(env=env, policy=baseline_policy, num_episodes=1, action_prob=1)
+    basline_agent = BaselineAgent(env=env, policy=baseline_policy,
+                                  num_episodes=1, price_threshold=price_thresholds, water_threshold=water_thresholds)
 
     episode_lengths, episode_returns, episode_actions, episode_water = basline_agent.execute_quantiles()
-    r_episode_lengths, r_episode_returns, r_episode_actions, r_episode_water =  basline_agent.execute_random()
+    r_episode_lengths, r_episode_returns, r_episode_actions, r_episode_water = basline_agent.execute_random()
+
+    print("Results:")
+    print(f"The return after applying the qunatiles baseline to the testing dataframe was: {episode_returns[-1][-1]}")
 
 
 
 
-def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
+def run_tabQ(train_df, train_path, val_path, df_val, price_thresholds, water_thresholds):
+    print(40 * "-")
+    print("Run Tabular Q-Learning")
    
     n_discrete_actions = 3
-    # state space => water level (index 0), price (index 1)
-
+    state_dim = 3
     #state_space = [10, 4]
     state_space = [10, 4, 3]
+    num_episodes = 500
+    reward_shaping_bool = True
+    reward_shaping_type = 2
 
+    # environemnt
     # train
+    env_train_vincent = HydroElectric_Test(path_to_test_data=train_path)
     env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=train_df, warm_start=False, warm_start_step=2000,
-                shaping=True, shaping_type=2)
+                shaping=reward_shaping_bool, shaping_type=reward_shaping_type)
 
-    # validate
+    # validate with our env
     env_val = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=df_val)
 
-    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1200, price_threshold=price_thresholds,
-               water_threshold=water_thresholds, state_dim=3)
+    # validate with Vincents env
+    env_val_vincent = HydroElectric_Test(path_to_test_data=val_path)
+
+    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=num_episodes, price_threshold=price_thresholds,
+               water_threshold=water_thresholds, state_dim=state_dim, alpha=0.5)
 
 
-    Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data, val_returns = agent.execute_qlearning(validation_env=env_val, adaptive_epsilon = True, adapting_learning_rate = True)
+    Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data, val_returns = agent.execute_qlearning(validation_env=env_val, adaptive_epsilon = True, adapting_learning_rate = False)
 
-    plt.plot(episode_returns)
-    plt.plot(val_returns)
+    # plot for us
+    plt.plot(episode_returns, label='Train Return')
+    plt.plot(val_returns, label='Validation Return')
     plt.xlabel("Number of Episodes")
     plt.ylabel("Return")
+    plt.legend()
     plt.title("Training return with reward shaping")
     plt.show()
 
-    # plt.plot(val_returns)
-    # plt.xlabel("Number of Episodes")
-    # plt.ylabel("Return")
-    # plt.title("Validation return with reward shaping")
-    # plt.show()
+    Q_policy = agent.greedification(Q)
+    val_episode_lengths, val_episode_returns, val_viz_data = agent.evaluate_policy_vincent(env_val_vincent, Q_policy)
 
-    # validate
-    agent = QAgent(env=env, policy=TabEpsilonGreedyPolicy(), num_episodes=1000, price_threshold=price_thresholds,
-                water_threshold=water_thresholds, state_dim=3)
+    plt.plot(val_episode_returns)
+    plt.show()
+    print("Results:")
+    print(f"The return of the test set after applying the Tabular Q-Learning after {num_episodes} episodes was: {val_episode_returns[-1]}")
+
+    val_episode_lengths, val_episode_returns, val_viz_data = agent.evaluate_policy(env_val, Q_policy)
+
+    print("Results:")
+    print(f"The return of the test set after applying the Tabular Q-Learning after {num_episodes} episodes was: {val_episode_returns[-1]}")
+
+
 
     if agent.state_dim == 2:
         Q_max_vals = Q.max(axis=2)
@@ -126,9 +162,9 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
         Q1_max = Q1.max(axis=2)
         Q2_max = Q2.max(axis=2)
 
-        np.savetxt(f"results/Q_val_table_Q0_space_{agent.state_dim}.csv", Q0_max, delimiter=",")
-        np.savetxt(f"results/Q_val_table_Q1_space_{agent.state_dim}.csv", Q1_max, delimiter=",")
-        np.savetxt(f"results/Q_val_table_Q2_space_{agent.state_dim}.csv", Q2_max, delimiter=",")
+        # np.savetxt(f"results/Q_val_table_Q0_space_{agent.state_dim}.csv", Q0_max, delimiter=",")
+        # np.savetxt(f"results/Q_val_table_Q1_space_{agent.state_dim}.csv", Q1_max, delimiter=",")
+        # np.savetxt(f"results/Q_val_table_Q2_space_{agent.state_dim}.csv", Q2_max, delimiter=",")
 
         Q_policy = agent.greedification(Q)
         Q0_eval = np.squeeze(Q[:, :, :1])
@@ -139,12 +175,10 @@ def run_tabQ(train_df, df_val, price_thresholds, water_thresholds):
         Q1_pol = Q1_eval.argmax(axis=2)
         Q2_pol = Q2_eval.argmax(axis=2)
 
-        np.savetxt(f"results/Q_val_policy_Q0_val_space_{agent.state_dim}.csv", Q0_pol, delimiter=",")
-        np.savetxt(f"results/Q_val_policy_Q1_val_space_{agent.state_dim}.csv", Q1_pol, delimiter=",")
-        np.savetxt(f"results/Q_val_policy_Q2_val_space_{agent.state_dim}.csv", Q2_pol, delimiter=",")
+        # np.savetxt(f"results/Q_val_policy_Q0_val_space_{agent.state_dim}.csv", Q0_pol, delimiter=",")
+        # np.savetxt(f"results/Q_val_policy_Q1_val_space_{agent.state_dim}.csv", Q1_pol, delimiter=",")
+        # np.savetxt(f"results/Q_val_policy_Q2_val_space_{agent.state_dim}.csv", Q2_pol, delimiter=",")
 
-        val_episode_lengths, val_episode_returns, val_viz_data = agent.evaluate_policy(env_val, Q_policy)
-        print(val_episode_returns)
 
 
 

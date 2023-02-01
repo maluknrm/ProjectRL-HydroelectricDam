@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import random
 from tqdm import tqdm
+from typing import Tuple, Dict, List
 
 
 
@@ -9,7 +10,8 @@ class BaselineAgent:
     """
     Class for the agent.
     """
-    def __init__(self, env, policy, num_episodes, action_prob = 0.7, discount_factor=0.9, alpha=0.5):
+    def __init__(self, env, policy, num_episodes, price_threshold,
+                 water_threshold, action_prob = 0.7, discount_factor=0.9, alpha=0.5):
         """
         Params for the agent.
         """
@@ -17,6 +19,8 @@ class BaselineAgent:
         self.policy = policy
         self.num_episodes = num_episodes
         self.action_prob = action_prob
+        self.price_threshold = price_threshold
+        self.water_threshold = water_threshold
 
 
     def execute_quantiles(self):
@@ -46,9 +50,9 @@ class BaselineAgent:
             self.env.reset()
 
             while True:
-                disc_state = self.env.discretize_state(self.env.current_state)
+                disc_state = self.discretize_state(self.env.current_state)
                 action = self.policy.baseline_policy(state=disc_state, action_prob=self.action_prob)
-                new_state, reward, done, info, action = self.env.step(action)
+                new_state, reward, _, done, info, action = self.env.step(action)
 
                 R += reward
                 rewards.append(R)
@@ -95,9 +99,9 @@ class BaselineAgent:
             self.env.reset()
 
             while True:
-                disc_state = self.env.discretize_state(self.env.current_state)
+                disc_state = self.discretize_state(self.env.current_state)
                 action = self.policy.random_policy(state=disc_state)
-                new_state, reward, done, info, action = self.env.step(action)
+                new_state, reward, _, done, info, action = self.env.step(action)
 
                 R += reward
                 rewards.append(R)
@@ -114,6 +118,17 @@ class BaselineAgent:
 
         episode_lengths, episode_returns, episode_actions, episode_water = zip(*stats)
         return episode_lengths, episode_returns, episode_actions, episode_water
+
+    def discretize_state(self, state: Tuple[int, float]) -> Tuple[int, int]:
+        """
+        Discretizes the continuous state.
+        :param state: Continuous state
+        :returns the state in a discretized form
+        """
+        disc_water = np.digitize(state[0], self.water_threshold, right=True)
+        disc_prize = np.digitize(state[1], self.price_threshold, right=True)
+
+        return disc_water, disc_prize
 
 
 
