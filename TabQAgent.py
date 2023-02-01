@@ -37,23 +37,23 @@ class QAgent():
         self.Q = np.zeros(shape)
 
 
-    def discretize_state(self,  state):
+    def discretize_state(self,  state, old_state):
         """
         Main function for getting the right function.
         """
         if self.state_dim == 2:
-            state = self._discretize_state_2(state)
+            state = self._discretize_state_2(state, old_state)
 
         elif self.state_dim == 3:
-            state = self._discretize_state_3(state)
+            state = self._discretize_state_3(state, old_state)
         
         elif self.state_dim == 4:
-            state = self._discretize_state_4(state)
+            state = self._discretize_state_4(state, old_state)
         
         return state
 
 
-    def _discretize_state_2(self, state: Tuple[int, float]) -> Tuple[int, int]:
+    def _discretize_state_2(self, state: Tuple[int, float], old_state) -> Tuple[int, int]:
         """
         Discretizes the continuous state for two state dimensions.
         :param state: Continuous state.
@@ -66,7 +66,7 @@ class QAgent():
 
     
     
-    def _discretize_state_3(self, state: Tuple[int, float]) -> Tuple[int, int]:
+    def _discretize_state_3(self, state: Tuple[int, float], old_state) -> Tuple[int, int]:
         """
         Discretizes the continuous state.
         :param state: Continuous state.
@@ -75,9 +75,23 @@ class QAgent():
         disc_water = np.digitize(state[0], self.water_threshold, right=True)
         disc_prize = np.digitize(state[1], self.price_threshold, right=True)
 
-        return disc_water, disc_prize, state[2]
+        if old_state == (0, 0):
+            disc_trend = 0
+        
+        else:
+            trend = state[1] - old_state[1]
 
-    def _discretize_state_4(self, state: Tuple[int, float]) -> Tuple[int, int]:
+            if trend > 0:
+                disc_trend = 2
+            elif trend < 0:
+                disc_trend = 0
+            else:
+                disc_trend = 1
+
+        return disc_water, disc_prize, disc_trend
+
+
+    def _discretize_state_4(self, state: Tuple[int, float], old_state) -> Tuple[int, int]:
         """
         Discretizes the continuous state.
         :param state: Continuous state.
@@ -91,7 +105,9 @@ class QAgent():
 
 
 
-    def execute_qlearning(self, epsilon: float = 0.3, epsilon_end: float = 0.05,
+    def execute_qlearning(self,
+                          validation_env,
+                          epsilon: float = 0.3, epsilon_end: float = 0.05,
                           adaptive_epsilon: bool = False,
                           adapting_learning_rate: bool = False) -> Tuple[NDArray, List, List, List]:
         """
@@ -109,6 +125,7 @@ class QAgent():
         avg_rewards = []
         avg_shaped_rewards = []
         shaped_rewards = []
+        val_returns = []
 
         # If adaptive learning rate, it starts with a value of 1 and decays it over time
         if adapting_learning_rate:
@@ -118,6 +135,8 @@ class QAgent():
 
             # Initialize the state
             state = self.env.reset()
+            # first old state (dummy)
+            old_state = (0, 0)
 
             # Start recording viz_data once we reach last episode
             viz_prices = []
@@ -135,7 +154,8 @@ class QAgent():
                 viz_prices.append(price)
 
             # Discretize the state space regarding the dimension
-            state = self.discretize_state(state)
+            undisc_state = state
+            state = self.discretize_state(state, old_state)
 
             # Keep track of return and rewards
             R = 0
@@ -157,7 +177,8 @@ class QAgent():
                 new_state, reward, shaped_reward, done, _, taken_action = self.env.step(action)
                 waterlevel = new_state[0]
                 price = new_state[1]
-                new_state = self.discretize_state(new_state)
+                undisc_new_state = new_state
+                new_state = self.discretize_state(new_state, undisc_state)
 
                 # update the return
                 R += reward
@@ -184,8 +205,12 @@ class QAgent():
 
                 # check if the episode is over
                 if done:
+                    policy = self.greedification(self.Q)
+                    val_episode_lengths, val_episode_returns, val_viz_data = self.evaluate_policy(validation_env, policy)
+                    val_returns.append(val_episode_returns)
                     break
 
+                undisc_state = undisc_new_state
                 state = new_state
 
             if adapting_learning_rate:
@@ -210,87 +235,7 @@ class QAgent():
                 shaped_rewards = []
 
         episode_lengths, episode_returns, episode_shaped_returns = zip(*stats)
-        return self.Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data
-
-
-    def greedification(self, Q_table: NDArray) -> NDArray:
-        """
-        Changes the learned Q-table into a policy matrix using greedification.
-        :param Q_table: The learned Q-table.
-        :returns The policy.
-        """
-        axis = len(np.shape(Q_table)) - 1
-        policy = Q_table.argmax(axis=axis)
-        return policy
-
-    def evaluate_policy(self, policy: NDArray) -> Tuple[List, List]:
-        """
-        Evaluates the policy on an evaluation dataframe.
-        :param policy: A learned policy.
-        :returns The validation episode lengths and returns.
-        """
-
-        # keep track of stats
-        stats = []
-
-        # Initialize the state
-        state = self.env.reset()
-
-        # save information for visulization
-        viz_actions = []
-        viz_waterlevels = []
-        viz_rewards = [0]
-        viz_prices = []
-        waterlevel = state[0]
-        price = state[1]
-        viz_waterlevels.append(waterlevel)
-        viz_prices.append(price)
-
-        # Discretize the state space
-        state = self.discretize_state(state)
-
-        # Keep track of return and rewards
-        R = 0
-
-        # keep track of the episodes
-        i_episode = 0
-
-        # loop until the episode is terminated
-        while True:
-
-            action = self.get_greedy_action(policy, state)
-
-            # next transition
-            new_state, reward, shaped_rewards, done, _, taken_action = self.env.step(action)
-            waterlevel = new_state[0]
-            price = new_state[1]
-            new_state = self.discretize_state(new_state)
-
-            # update the return
-            R += reward
-            i_episode += 1
-
-            # save visualisation data
-            viz_prices.append(price)
-            viz_actions.append(taken_action)
-            viz_waterlevels.append(waterlevel)
-            viz_rewards.append(reward)
-            waterlevel = new_state[0]
-            price = new_state[1]
-
-            # check if the episode is over
-            if done:
-                break
-
-            state = new_state
-
-        stats.append((i_episode, R))
-
-        viz_actions.append(None)
-        viz_data = {"Price": viz_prices, "Waterlevel": viz_waterlevels, "Reward": viz_rewards, "Action": viz_actions}
-
-        episode_lengths, episode_returns = zip(*stats)
-        return episode_lengths, episode_returns, viz_data
+        return self.Q, avg_rewards, avg_shaped_rewards, episode_lengths, episode_returns, episode_shaped_returns, viz_data, val_returns
 
 
     
@@ -378,3 +323,169 @@ class QAgent():
             action = policy[state[0], state[1], state[2], state[3]]
         
         return action
+
+
+    def evaluate_policy(self, validation_env, policy: NDArray) -> Tuple[List, List]:
+        """
+        Evaluates the policy on an evaluation dataframe.
+        :param policy: A learned policy.
+        :returns The validation episode lengths and returns.
+        """
+
+        # keep track of stats
+        stats = []
+
+        # Initialize the state
+        state = validation_env.reset()
+        old_state = (0, 0)
+
+        # save information for visulization
+        viz_actions = []
+        viz_waterlevels = []
+        viz_rewards = [0]
+        viz_prices = []
+        waterlevel = state[0]
+        price = state[1]
+        viz_waterlevels.append(waterlevel)
+        viz_prices.append(price)
+
+        # Discretize the state space
+        undisc_state = state
+        state = self.discretize_state(state, old_state)
+
+        # Keep track of return and rewards
+        R = 0
+
+        # keep track of the episodes
+        i_episode = 0
+
+        # loop until the episode is terminated
+        while True:
+
+            action = self.get_greedy_action(policy, state)
+
+            # next transition
+            new_state, reward, shaped_rewards, done, _, taken_action = validation_env.step(action)
+            waterlevel = new_state[0]
+            price = new_state[1]
+            undisc_new_state = new_state
+            new_state = self.discretize_state(new_state, undisc_state)
+
+            # update the return
+            R += reward
+            i_episode += 1
+
+            # save visualisation data
+            viz_prices.append(price)
+            viz_actions.append(taken_action)
+            viz_waterlevels.append(waterlevel)
+            viz_rewards.append(reward)
+            waterlevel = new_state[0]
+            price = new_state[1]
+
+            
+            # check if the episode is over
+            if done:
+                break
+
+            undisc_state = undisc_new_state
+            state = new_state
+
+        stats.append((i_episode, R))
+
+        viz_actions.append(None)
+        viz_data = {"Price": viz_prices, "Waterlevel": viz_waterlevels, "Reward": viz_rewards, "Action": viz_actions}
+
+        episode_lengths, episode_returns = zip(*stats)
+        return episode_lengths, episode_returns, viz_data
+
+    
+    def greedification(self, Q_table: NDArray) -> NDArray:
+        """
+        Changes the learned Q-table into a policy matrix using greedification.
+        :param Q_table: The learned Q-table.
+        :returns The policy.
+        """
+        axis = len(np.shape(Q_table)) - 1
+        policy = Q_table.argmax(axis=axis)
+        return policy
+    
+
+    def evaluate_policy_vincent(self, TestEnv, policy: NDArray) -> Tuple[List, List]:
+        """
+        Evaluates the policy on an evaluation dataframe.
+        :param policy: A learned policy.
+        :returns The validation episode lengths and returns.
+        """
+
+        # keep track of stats
+        stats = []
+
+        # Initialize the state
+        state = TestEnv.observation()
+        old_state = (0, 0)
+
+        # save information for visulization
+        viz_actions = []
+        viz_waterlevels = []
+        viz_rewards = [0]
+        viz_prices = []
+        waterlevel = state[0]
+        price = state[1]
+        viz_waterlevels.append(waterlevel)
+        viz_prices.append(price)
+
+        # Discretize the state space
+        state = self.discretize_state(state, old_state)
+
+        # Keep track of return and rewards
+        R = 0
+
+        # keep track of the episodes
+        i_episode = 0
+
+        # loop until the episode is terminated
+        while True:
+
+            action = self.get_greedy_action(policy, state)
+
+            # modify to Vincents actions
+            vincent_action = 0
+            if action == 0:
+                vincent_action = -1
+            elif action == 1:
+                vincent_action = 0
+            elif action == 2:
+                vincent_action = 1
+
+            # next transition
+            new_state, reward, shaped_rewards, done, _, taken_action = TestEnv.step(vincent_action)
+            waterlevel = new_state[0]
+            price = new_state[1]
+            new_state = self.discretize_state(new_state[:2], state)
+
+            # update the return
+            R += reward
+            i_episode += 1
+
+            # save visualisation data
+            viz_prices.append(price)
+            viz_actions.append(taken_action)
+            viz_waterlevels.append(waterlevel)
+            viz_rewards.append(reward)
+            waterlevel = new_state[0]
+            price = new_state[1]
+
+            # check if the episode is over
+            if done:
+                break
+
+            state = new_state
+
+        stats.append((i_episode, R))
+
+        viz_actions.append(None)
+        viz_data = {"Price": viz_prices, "Waterlevel": viz_waterlevels, "Reward": viz_rewards, "Action": viz_actions}
+
+        episode_lengths, episode_returns = zip(*stats)
+        return episode_lengths, episode_returns, viz_data

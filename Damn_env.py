@@ -196,41 +196,41 @@ class DamEnv(gym.Env):
             sellable_energy = U_potential_energy * 0.9  # Actually sellable energy in Joule
             sellable_energy_mgwh = self.joule_to_megawatt_hours(joule=sellable_energy)  # Sellable energy in mgwh
             reward = obs[1] * sellable_energy_mgwh  # price of sellable energy
-            
+
+            # if reward shaping
             if self.shaping == True:
                 if self.shaping_type == 1:
-                    shaped_reward = 0
+                    waterlevel_mgwh = self.joule_to_megawatt_hours(joule=U_potential_energy)
+                    shaped_reward = reward - 43 * waterlevel_mgwh
 
                 else:
-                    shaped_reward = 0
-
-                #shaped_reward = reward - self.shape_alpha * sellable_energy_mgwh
-                waterlevel_mgwh = self.joule_to_megawatt_hours(joule=U_potential_energy)
-                #shaped_reward = reward - 25.0 * waterlevel_mgwh
-                #if obs[1] > 48.09: # enhance reward if we sell for a high price 
-                    #shaped_reward = reward * 2
-                #elif obs[1] < 29.59: # diminish reward if we sell for a low price
-                    #shaped_reward = reward / 2
-                #else:
-                    #shaped_reward = reward
-                
-                shaped_reward = reward - 43 * waterlevel_mgwh
+                    if obs[1] > 48.09:
+                        shaped_reward = reward * 2
+                    elif obs[1] < 29.59:
+                        shaped_reward = reward / 2
+                    else:
+                        shaped_reward = reward
 
         # if we buy...
         elif action == 2:
             U_transition = (waterlevel * 1000) * 9.81 * 30
             transition_mgwh = self.joule_to_megawatt_hours(U_transition)
             reward = -(obs[1] * transition_mgwh)
+
+            # if reward shaping
             if self.shaping == True:
-                #shaped_reward = reward + self.shape_alpha * transition_mgwh
-                #shaped_reward = reward + 25.0 * transition_mgwh * 0.8
-                #if obs[1] > 48.09: # diminish reward if we buy for a high price
-                    #shaped_reward = reward * 2
-                #elif obs[1] < 29.59: # enhance reward if we buy for a low price
-                    #shaped_reward = reward / 2
-                #else:
-                    #shaped_reward = reward
-                shaped_reward = reward + 43 * transition_mgwh
+                # shaping type one => balancing for waterlevel
+                if self.shaping_type == 1:
+                    shaped_reward = reward + 43 * transition_mgwh
+
+                # shaping type 2 => incentivize buying for high/low price
+                else:
+                    if obs[1] > 48.09:
+                        shaped_reward = reward * 2
+                    elif obs[1] < 29.59:
+                        shaped_reward = reward / 2
+                    else:
+                        shaped_reward = reward
 
         return (reward, shaped_reward)
 
