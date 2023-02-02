@@ -6,11 +6,11 @@ Implementation of the three algorithms that were conducted for the project. The 
 To run the main file call the following prompt with the file path.
 
 ```{objectives}
-- python main.py -P PATH
+python main.py -P PATH
 ```
 For example,
 
 ```{objectives}
-- python main.py -P validate.xlsx
+python main.py -P validate.xlsx
 ```
 
