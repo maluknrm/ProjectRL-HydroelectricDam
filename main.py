@@ -96,11 +96,11 @@ def run_tabQ(runs, train_df, train_path, val_path, val_df, price_thresholds, wat
     print("Run Tabular Q-Learning")
 
     n_discrete_actions = 3
-    state_dim = 2
-    state_space = [10, 4]
-    #state_space = [10, 4, 3]
+    state_dim = 3
+    #state_space = [10, 4]
+    state_space = [10, 4, 3]
     num_episodes = 1000
-    reward_shaping_bool = False
+    reward_shaping_bool = True
     reward_shaping_type = 2
 
 

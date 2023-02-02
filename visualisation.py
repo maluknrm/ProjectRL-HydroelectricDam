@@ -214,3 +214,14 @@ class Visualisation():
         plt.ylabel("Episode Return")
         plt.title(f"{self.algorithm}: Return for Training and Validation", fontweight="bold")
         plt.show()
+
+    
+    def run_curves(self):
+        # Make line plot
+        fig = sns.lineplot(data = self.data, x="Episode", y="Return", hue="Stage")
+
+        # Label axes and title
+        plt.xlabel("Episode")
+        plt.ylabel("Average Return")
+        plt.title(f"{self.algorithm}: Average Return Across 5 Runs", fontweight="bold")
+        plt.show()
