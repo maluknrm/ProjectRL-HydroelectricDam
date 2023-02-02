@@ -59,7 +59,7 @@ def main():
 
 
     # Tabular Q-Agent
-    runs = 10
+    runs = 5
 
     run_tabQ(runs, train_df, train_path, val_path, val_df, price_thresholds, water_thresholds)
 
