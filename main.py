@@ -59,7 +59,7 @@ def main():
 
 
     # Tabular Q-Agent
-    runs = 5
+    runs = 2
 
     run_tabQ(runs, train_df, train_path, val_path, val_df, price_thresholds, water_thresholds)
 
@@ -157,20 +157,19 @@ def run_tabQ(runs, train_df, train_path, val_path, val_df, price_thresholds, wat
 
         print("Results:")
         print(f"The return of the test set after applying the Tabular Q-Learning after {num_episodes} episodes was: {val_episode_returns[-1]}")
+        visualise_q(agent, Q, state_dim, reward_shaping_bool, reward_shaping_type)
 
     #print(dict_run)
     df = pd.DataFrame(data=dict_run)
     df.to_csv(f"runs/Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}")
 
-def visualise_q(agent, Q):
+def visualise_q(agent, Q, state_dim, reward_shaping_bool, reward_shaping_type):
+    Q_policy = agent.greedification(Q)
 
     if agent.state_dim == 2:
         Q_max_vals = Q.max(axis=2)
-        np.savetxt(f"results/Q_val_table_space_{agent.state_dim}.csv", Q_max_vals, delimiter=",")
-        Q_policy = agent.greedification(Q)
-        np.savetxt(f"results/Q_val_policy_space_{agent.state_dim}.csv", Q_policy, delimiter=",")
-        val_episode_lengths, val_episode_returns, val_viz_data = agent.evaluate_policy(Q_policy)
-        print(val_episode_returns)
+        np.savetxt(f"results/Q_vals_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q_max_vals, delimiter=",")
+        np.savetxt(f"results/Q_policy_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q_policy, delimiter=",")
 
     # Visualisation
     elif agent.state_dim == 3:
@@ -184,11 +183,10 @@ def visualise_q(agent, Q):
         Q1_max = Q1.max(axis=2)
         Q2_max = Q2.max(axis=2)
 
-        np.savetxt(f"results/Q_val_table_Q0_space_{agent.state_dim}.csv", Q0_max, delimiter=",")
-        np.savetxt(f"results/Q_val_table_Q1_space_{agent.state_dim}.csv", Q1_max, delimiter=",")
-        np.savetxt(f"results/Q_val_table_Q2_space_{agent.state_dim}.csv", Q2_max, delimiter=",")
+        np.savetxt(f"results/Q_val_table_Q0_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q0_max, delimiter=",")
+        np.savetxt(f"results/Q_val_table_Q1_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q1_max, delimiter=",")
+        np.savetxt(f"results/Q_val_table_Q2_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q2_max, delimiter=",")
 
-        Q_policy = agent.greedification(Q)
         Q0_eval = np.squeeze(Q[:, :, :1])
         Q1_eval = np.squeeze(Q[:, :, 1:2])
         Q2_eval = np.squeeze(Q[:, :, 2:])
@@ -197,9 +195,9 @@ def visualise_q(agent, Q):
         Q1_pol = Q1_eval.argmax(axis=2)
         Q2_pol = Q2_eval.argmax(axis=2)
 
-        np.savetxt(f"results/Q_val_policy_Q0_val_space_{agent.state_dim}.csv", Q0_pol, delimiter=",")
-        np.savetxt(f"results/Q_val_policy_Q1_val_space_{agent.state_dim}.csv", Q1_pol, delimiter=",")
-        np.savetxt(f"results/Q_val_policy_Q2_val_space_{agent.state_dim}.csv", Q2_pol, delimiter=",")
+        np.savetxt(f"results/Q_val_policy_Q0_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q0_pol, delimiter=",")
+        np.savetxt(f"results/Q_val_policy_Q1_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q1_pol, delimiter=",")
+        np.savetxt(f"results/Q_val_policy_Q2_Statedim_{state_dim}_rewardshaping_{reward_shaping_bool}_type_{reward_shaping_type}", Q2_pol, delimiter=",")
 
 
 
