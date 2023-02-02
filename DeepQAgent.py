@@ -18,7 +18,14 @@ from tqdm import tqdm
 from gym import spaces
 import sklearn
 from collections import defaultdict
+import os
+import inspect
+import sys
+import copy
+
+from visualisation import *
 from TestEnv import *
+from Dam_env import DamEnv
 
 # Set the seed for reproducibility
 seed = 432
@@ -32,31 +39,31 @@ random.seed(seed)
 
 class QNetwork(nn.Module):
 
-    def __init__(self, learning_rate: float, input_features: int, num_hidden=128):
+    def __init__(self, learning_rate: float, input_features: int, action_space: int=3, num_hidden: int=64) -> None:
         """
-        Params:
+        Network with three linear layers.
         :param env: environment that the agent needs to play
         :param learning_rate: learning rate used in the update
         """
         nn.Module.__init__(self)
         input_features = input_features
-        action_space = env.action_space.n
+        action_space = action_space
         self.l1 = nn.Linear(in_features=input_features, out_features=num_hidden)
-        self.l2 = nn.Linear(in_features=num_hidden, out_features=64)
-        self.l3 = nn.Linear(in_features=64, out_features=action_space)
+        self.l2 = nn.Linear(in_features=num_hidden, out_features=32)
+        self.l3 = nn.Linear(in_features=32, out_features=action_space)
 
         # Initialise ADAM optimizer
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """
-        Makes a forward pass.
+        Makes a forward pass. Relu activation is used.
         :param x: observation
+        :returns output of forward pass.
         """
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
         x = self.l3(x)
-
         return x
 
 
@@ -72,8 +79,6 @@ class EpsilonGreedyPolicy(object):
         returns: An action (int).
         """
         obs = torch.FloatTensor(obs)
-        # obs[:1] /= 100000
-        # obs[1:2] /= 2500
 
         # normalisation with mean and std
         obs[:1] = (obs[:1] - 49999.5) / 28867.513458037913
@@ -99,7 +104,6 @@ class EpsilonGreedyPolicy(object):
         :returns the new epsilon
         """
         return epsilon_start - (it * 0.00095) if it <= 1000 else epsilon_end
-
 
 class ExperienceReplay:
 
@@ -178,6 +182,7 @@ class DDQNAgent:
         self.device = device
         self.discount_rate = discount_rate
         self.alpha = alpha
+
         # epsilon greedy
         self.epsilon_greedy = epsilon_greedy
         self.epsilon_start = epsilon_start
@@ -204,13 +209,11 @@ class DDQNAgent:
         """
         if greedy:
             epsilon = 0
-            action = self.epsilon_greedy.sample_action(Q=self.online_network, obs=observation, epsilon=epsilon)
 
         else:
-            # epsilon = self.epsilon_greedy.get_epsilon(it=step, epsilon_start=self.epsilon_start, epsilon_end=self.epsilon_end)
             epsilon = np.interp(step, [0, 100000], [self.epsilon_start, self.epsilon_end])
             # epsilon = 0.1
-            action = self.epsilon_greedy.sample_action(Q=self.online_network, obs=observation, epsilon=epsilon)
+        action = self.epsilon_greedy.sample_action(Q=self.online_network, obs=observation, epsilon=epsilon)
 
         return action, epsilon
 
@@ -269,14 +272,6 @@ class DDQNAgent:
         shaped_reward = torch.tensor(shaped_reward, dtype=torch.float)[:, None]
         done = torch.tensor(done, dtype=torch.uint8)[:, None]  # Boolean
 
-        # normalizing
-        # state[:, :1] /= 100000
-        # state[:, 1:2] /= self.env.highest_price
-        # next_state[:, :1] /= 100000
-        # next_state[:, 1:2] /= self.env.highest_price
-        # reward /= self.env.highest_price
-        # shaped_reward /= self.env.highest_price #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
         # normalisation with mean and std
         state[:, :1] = (state[:, :1] - self.env.water_mean) / self.env.water_std
         state[:, 1:2] = (state[:, 1:2] - self.env.price_mean) / self.env.price_std
@@ -325,12 +320,15 @@ class DDQNAgent:
         """
         # for adaptive epsilon
         global_steps = 0
+        returns = []
+        returns_val = []
 
         # track learning curves
         learning_curves = defaultdict(list)
 
         # running the episodes
         for i in tqdm(range(num_episodes)):
+            R = 0
 
             # Reset state
             state = self.env.reset()
@@ -345,6 +343,8 @@ class DDQNAgent:
                 "Reward": [0],
                 "Shaped Reward": [0]}
 
+            # val_viz_data = self.evaluate(validation_env)
+
             # Episode loop
             while True:
                 action, epsilon = self.choose_action(step=global_steps, observation=state, greedy=False)
@@ -352,8 +352,10 @@ class DDQNAgent:
 
                 self.replay_memory.add_data((state, action, reward, shaped_reward, done, next_state))
 
+                # g_state = copy.deepcopy(state)
                 global_steps += 1
                 state = next_state
+                R += reward
 
                 # Save episode stats
                 train_viz_data[f"E{i}"]["Waterlevel"].append(state[0])
@@ -365,29 +367,18 @@ class DDQNAgent:
 
                 # Add return to replay memory
                 if done:
+                    returns.append(R)
                     self.replay_memory.add_reward(sum(train_viz_data[f"E{i}"]["Reward"]))
 
                     # evaluate validation
                     val_viz_data = self.evaluate(validation_env)
+                    returns_val.append(sum(val_viz_data["Reward"]))
 
                     # print statement to keep track of development
-                    if i % 10 == 0:
-                        print(30 * '--')
-                        print('Epsilon:', round(epsilon, 2))
-                        print('Avg Rew:', round(np.mean(self.replay_memory.reward_buffer), 1))
-                        print("Training Return of last episode:", round(sum(train_viz_data[f"E{i}"]["Reward"]), 1))
-                        print("Validation Return:", round(sum(val_viz_data["Reward"]), 1))
+                    if i % 1 == 0:
                         actions = train_viz_data[f"E{i}"]["Action"]
                         taken_actions = train_viz_data[f"E{i}"]["Taken Action"]
                         len_actions = len(train_viz_data[f"E{i}"]["Action"])
-                        print("Chosen actions in last episode:", "SELL -",
-                              str(round(actions.count(0) / len_actions, 2)), " / HOLD -",
-                              str(round(actions.count(1) / len_actions, 2)), "/ BUY -",
-                              str(round(actions.count(2) / len_actions, 2)))
-                        print("Taken actions in last episode: ", "SELL -",
-                              str(round(taken_actions.count(0) / len_actions, 2)), " / HOLD -",
-                              str(round(taken_actions.count(1) / len_actions, 2)), "/ BUY -",
-                              str(round(taken_actions.count(2) / len_actions, 2)))
 
                     # Update return curves & actions
                     learning_curves["Episode"].extend([i, i])
@@ -402,8 +393,9 @@ class DDQNAgent:
                 self.train(batch_size=batch_size)
 
                 # update target network
-                if i % target_update_freq:
+                if global_steps % target_update_freq == 0:
                     self.update_target_network()
+
 
             # Cosmetics for plots
             train_viz_data[f"E{i}"]["Action"].append(None)
@@ -412,13 +404,13 @@ class DDQNAgent:
         # Save policy returned at last episode
         policy = self.return_policy_Qvalues()
 
-        return train_viz_data, val_viz_data, policy, learning_curves
+        return train_viz_data, val_viz_data, policy, learning_curves, returns, returns_val
 
-    def evaluate(self, validation_env) -> Tuple:
+    def evaluate(self, validation_env) -> Dict:
         """
         Function to evaluate the network.
         :param validation_env: Validation environment
-        :returns:
+        :returns: A dictionary with the stats of the evaluation
         """
         # Initialize the state
         state = validation_env.reset()
@@ -465,11 +457,11 @@ class DDQNAgent:
 
         return val_viz_data
 
-    def evaluate_vincent(self, validation_env) -> Tuple:
+    def evaluate_vincent(self, validation_env) -> Dict:
         """
         Function to evaluate the network.
         :param validation_env: Validation environment
-        :returns:
+        :returns: Dictionary with the stats if the evaluation
         """
         # Initialize the state
         state = validation_env.observation()
@@ -521,92 +513,3 @@ class DDQNAgent:
 
         return val_viz_data
 
-
-# ------------------------------------GRID SEARCH---------------------------------------------------------------------------
-
-# Load data
-df = pd.read_csv("data/price_table.csv", index_col=0)
-df_val = pd.read_csv("data/price_table_val.csv", index_col=0)
-
-# Set fix parameters
-n_discrete_actions = 3
-state_space = [10, 4]
-num_episodes = 300
-
-# Define grid search parameters
-param_grid = {
-    "gamma": [0.98],
-    "alpha": [0.00005],
-    "end_epsilon": [0.05],
-    "target_update": [10]}
-
-# Save grid search results
-grid_results = {"Gamma": [], "Alpha": [], "End Epsilon": [], "Target Updates": [], "Train Return": [], "Val Return": []}
-
-# Run grid search
-for gamma in reversed(param_grid["gamma"]):
-    for alpha in reversed(param_grid["alpha"]):
-        for end_epsilon in reversed(param_grid["end_epsilon"]):
-            for target_update in reversed(param_grid["target_update"]):
-                # Print out current hyper parameters
-                print(40 * "___")
-                print("Gamma, Alpha, End Epsilon, Target update freq =", gamma, alpha, end_epsilon, target_update)
-
-                # Build training and validation environment
-                env = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=df,
-                             warm_start=False, warm_start_step=400, shaping=True)
-                env_val = DamEnv(n_discrete_actions=n_discrete_actions, state_space=state_space, price_table=df_val,
-                                 warm_start=False, warm_start_step=400)
-
-                # MAKE VINCENTS EXCEL FILE
-
-                # df_val = df_val.rename(columns={"Date": "PRICES"})
-
-                # creating an output excel file
-                # resultExcelFile = pd.ExcelWriter('ResultExcelFile.xlsx')
-
-                # converting the csv file to an excel file
-                # df_val.to_excel(resultExcelFile, index=False)
-
-                # saving the excel file
-                # resultExcelFile.save()
-
-                env_val_vincent = HydroElectric_Test("../data/validate.xlsx")
-                device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-                # Build agent
-                agent = DDQNAgent(env=env, Qnet=QNetwork, device=device, epsilon_greedy=EpsilonGreedyPolicy(),
-                                  epsilon_start=1.0, epsilon_end=end_epsilon, discount_rate=gamma, alpha=alpha,
-                                  Buffer=ExperienceReplay, buffer_capacity=len(df) * 4)
-
-                # Run  training episodes and validation
-                train_viz_data, val_viz_data, policy, learning_curves = agent.run_episodes(num_episodes=num_episodes,
-                                                                                           validation_env=env_val,
-                                                                                           batch_size=32,
-                                                                                           target_update_freq=target_update)
-                val_data = agent.evaluate_vincent(env_val_vincent)
-
-                # Save grid search data
-                grid_results["Gamma"].append(gamma)
-                grid_results["Alpha"].append(alpha)
-                grid_results["Train Return"].append(sum(train_viz_data[f"E{num_episodes - 1}"]["Reward"]))
-                grid_results["End Epsilon"].append(end_epsilon)
-                grid_results["Target Updates"].append(target_update)
-                grid_results["Val Return"].append(sum(val_viz_data["Reward"]))
-
-                # Save training and validation results
-                train_lastEpisode = pd.DataFrame(data=train_viz_data[f"E{num_episodes - 1}"])
-                train_lastEpisode.to_csv(
-                    f"results/training/deepq_train_lr={alpha}_gamma={gamma}_shaping={env.shaping}_warmStart={env.warm_start}_endepsilon={end_epsilon}_targetudate={target_update}.csv")
-                policy = pd.DataFrame(data=policy)
-                policy.to_csv(
-                    f"results/policies/deepq_POLICY_lr={alpha}_gamma={gamma}_shaping={env.shaping}_warmStart={env.warm_start}_endepsilon={end_epsilon}_targetudate={target_update}.csv")
-                val_results = pd.DataFrame(data=val_viz_data)
-                val_results.to_csv(
-                    f"results/validation/deepq_val_lr={alpha}_gamma={gamma}_shaping={env.shaping}_warmStart={env.warm_start}_endepsilon={end_epsilon}_targetudate={target_update}.csv")
-                lc = val_results = pd.DataFrame(data=learning_curves)
-                lc.to_csv(
-                    f"results/learning_curves/deepq_lr={alpha}_gamma={gamma}_shaping={env.shaping}_warmStart={env.warm_start}_endepsilon={end_epsilon}_targetudate={target_update}.csv")
-
-grid_df = pd.DataFrame(data=grid_results)
-# grid_df.to_csv(f"../results/gridsearch2/deepq_grid_search.csv")
